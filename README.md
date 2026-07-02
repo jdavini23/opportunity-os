@@ -47,9 +47,9 @@ python -m pytest tests/
 
 ```bash
 cd frontend
-yarn install
+npm install
 cp .env.example .env        # REACT_APP_BACKEND_URL=http://localhost:8000
-yarn start
+npm start
 ```
 
 ## Deployment

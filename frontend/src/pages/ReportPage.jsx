@@ -63,7 +63,6 @@ export default function ReportPage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportId]);
 
   const handleShare = async () => {
