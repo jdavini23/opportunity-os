@@ -48,6 +48,17 @@ if not RATE_LIMIT_IP_SALT:
         "random value so hashed IPs can't be reversed by rainbow lookup."
     )
 
+# Behind a reverse proxy (Railway/Render), request.client.host is the proxy's
+# IP, which would collapse every user into one rate-limit bucket. Fail closed:
+# only trust X-Forwarded-For when explicitly enabled for a proxied deployment.
+TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "").strip().lower() in ("1", "true", "yes")
+if not TRUST_PROXY_HEADERS:
+    logger.warning(
+        "TRUST_PROXY_HEADERS not enabled — client IPs are taken from the direct "
+        "connection. If deployed behind a reverse proxy, all users share one "
+        "rate-limit bucket; set TRUST_PROXY_HEADERS=1."
+    )
+
 MAX_REPORTS_PER_IP_PER_DAY = int(os.environ.get("MAX_REPORTS_PER_IP_PER_DAY", "15"))
 MAX_REPORTS_PER_DAY_GLOBAL = int(os.environ.get("MAX_REPORTS_PER_DAY_GLOBAL", "200"))
 REPORT_BURST_MAX = int(os.environ.get("REPORT_BURST_MAX", "3"))

@@ -5,15 +5,14 @@ from fastapi import APIRouter, HTTPException, Request
 from db import db
 from integrations.anthropic_client import generate_opportunity_report
 from models import OpportunityReport, ReportCreateRequest, compute_overall_score
-from rate_limit import check_report_rate_limit
+from rate_limit import check_report_rate_limit, client_ip
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 @router.post("")
 async def create_report(body: ReportCreateRequest, request: Request):
-    ip = request.client.host if request.client else "unknown"
-    await check_report_rate_limit(ip)
+    await check_report_rate_limit(client_ip(request))
 
     query = body.query.strip()
     llm_report, model_used = await generate_opportunity_report(query)

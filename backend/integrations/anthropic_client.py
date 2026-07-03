@@ -21,7 +21,10 @@ from models import OpportunityReportLLM
 
 logger = logging.getLogger("opportunity_os.anthropic")
 
-_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=180.0) if ANTHROPIC_API_KEY else None
+# 120s keeps the whole request under the frontend's 150s deadline
+# (frontend/src/lib/api.js), so the server never "succeeds" after the
+# client has already given up.
+_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=120.0) if ANTHROPIC_API_KEY else None
 
 REPORT_SYSTEM_PROMPT = """\
 You are the analysis engine behind OpportunityOS, a market-intelligence tool \

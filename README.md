@@ -60,7 +60,10 @@ npm start
 | Database | MongoDB Atlas (M0)    | Set `MONGO_URL` on the backend host                          |
 | Frontend | Vercel                | Root directory `frontend/`; set `REACT_APP_BACKEND_URL`      |
 
-After deploying, set `CORS_ORIGINS` on the backend to the deployed frontend origin.
+After deploying, set `CORS_ORIGINS` on the backend to the deployed frontend
+origin, and set `TRUST_PROXY_HEADERS=1` so per-user rate limits see real client
+IPs through the platform's reverse proxy (otherwise every user shares one
+rate-limit bucket).
 
 ## Environment variables
 
@@ -72,6 +75,7 @@ Backend (`backend/.env.example`):
 | `MONGO_URL`, `DB_NAME` | yes | MongoDB connection |
 | `CORS_ORIGINS` | prod | Comma-separated frontend origin(s); cross-origin disabled when unset |
 | `RATE_LIMIT_IP_SALT` | recommended | Salts hashed IPs used as rate-limit keys |
+| `TRUST_PROXY_HEADERS` | prod | Set to `1` behind a reverse proxy so rate limits use `X-Forwarded-For` |
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5` |
 | `MAX_REPORTS_PER_IP_PER_DAY` | no | Default 15 |
 | `MAX_REPORTS_PER_DAY_GLOBAL` | no | Default 200 — the global LLM spend backstop |

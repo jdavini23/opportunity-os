@@ -13,10 +13,10 @@ consume quota — the safe direction for spend control.
 import hashlib
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pymongo import ReturnDocument
 
 from config import (
@@ -25,11 +25,25 @@ from config import (
     RATE_LIMIT_IP_SALT,
     REPORT_BURST_MAX,
     REPORT_BURST_WINDOW_SECS,
+    TRUST_PROXY_HEADERS,
 )
 from db import db
 
 _burst: Dict[str, List[float]] = defaultdict(list)
 _BURST_MAX_KEYS = 10_000
+
+
+def client_ip(request: Request) -> str:
+    """Client IP for rate-limit keys. Behind a reverse proxy the direct peer is
+    the proxy, so when TRUST_PROXY_HEADERS is enabled use X-Forwarded-For
+    instead — specifically its LAST entry, which is the one appended by the
+    trusted proxy directly in front of us and can't be spoofed by the client
+    (earlier entries are client-supplied)."""
+    if TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.rsplit(",", 1)[-1].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def _hash_ip(ip: str) -> str:
@@ -58,11 +72,15 @@ def _check_burst(key: str, max_requests: int, window_secs: int) -> bool:
 async def check_report_rate_limit(ip: str) -> None:
     """Raises HTTPException (429/503) when any layer is exceeded."""
     ip_hash = _hash_ip(ip)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    # Consumed by the TTL indexes in db.ensure_indexes so daily counters
+    # don't accumulate forever.
+    expires_at = now + timedelta(days=2)
 
     global_doc = await db.usage_daily.find_one_and_update(
         {"_id": today},
-        {"$inc": {"report_count": 1}},
+        {"$inc": {"report_count": 1}, "$set": {"expires_at": expires_at}},
         upsert=True,
         return_document=ReturnDocument.AFTER,
     )
@@ -74,7 +92,7 @@ async def check_report_rate_limit(ip: str) -> None:
 
     per_ip_doc = await db.rate_limit_daily.find_one_and_update(
         {"_id": f"{ip_hash}:{today}"},
-        {"$inc": {"count": 1}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$inc": {"count": 1}, "$set": {"updated_at": now.isoformat(), "expires_at": expires_at}},
         upsert=True,
         return_document=ReturnDocument.AFTER,
     )
