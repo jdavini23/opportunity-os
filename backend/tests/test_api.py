@@ -114,3 +114,41 @@ def test_global_daily_cap(client, monkeypatch):
     monkeypatch.setattr(rate_limit, "MAX_REPORTS_PER_DAY_GLOBAL", 1)
     assert client.post("/api/reports", json={"query": "first global query"}).status_code == 200
     assert client.post("/api/reports", json={"query": "second global query"}).status_code == 503
+
+
+def test_proxy_header_ignored_by_default(client, monkeypatch):
+    monkeypatch.setattr(rate_limit, "MAX_REPORTS_PER_IP_PER_DAY", 1)
+    ok = client.post("/api/reports", json={"query": "first query today"},
+                     headers={"X-Forwarded-For": "1.1.1.1"})
+    limited = client.post("/api/reports", json={"query": "second query today"},
+                          headers={"X-Forwarded-For": "2.2.2.2"})
+    assert ok.status_code == 200
+    # Header untrusted -> both requests land in the direct-connection bucket.
+    assert limited.status_code == 429
+
+
+def test_proxy_header_used_when_trusted(client, monkeypatch):
+    monkeypatch.setattr(rate_limit, "TRUST_PROXY_HEADERS", True)
+    monkeypatch.setattr(rate_limit, "MAX_REPORTS_PER_IP_PER_DAY", 1)
+    ok1 = client.post("/api/reports", json={"query": "first query today"},
+                      headers={"X-Forwarded-For": "1.1.1.1"})
+    ok2 = client.post("/api/reports", json={"query": "second query today"},
+                      headers={"X-Forwarded-For": "2.2.2.2"})
+    limited = client.post("/api/reports", json={"query": "third query today"},
+                          headers={"X-Forwarded-For": "2.2.2.2"})
+    assert ok1.status_code == 200
+    assert ok2.status_code == 200
+    assert limited.status_code == 429
+
+
+def test_proxy_header_spoofed_prefix_is_ignored(client, monkeypatch):
+    monkeypatch.setattr(rate_limit, "TRUST_PROXY_HEADERS", True)
+    monkeypatch.setattr(rate_limit, "MAX_REPORTS_PER_IP_PER_DAY", 1)
+    # Only the last entry (appended by the trusted proxy) counts, so a
+    # client-supplied prefix can't dodge the per-IP cap.
+    ok = client.post("/api/reports", json={"query": "first query today"},
+                     headers={"X-Forwarded-For": "9.9.9.9, 3.3.3.3"})
+    limited = client.post("/api/reports", json={"query": "second query today"},
+                          headers={"X-Forwarded-For": "8.8.8.8, 3.3.3.3"})
+    assert ok.status_code == 200
+    assert limited.status_code == 429
